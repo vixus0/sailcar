@@ -1,53 +1,90 @@
-WindAngle = 0.0
-DesiredSailAngle = 0.1
-SailAngle = 0.1
-CarAngle = 0.1
-SheetFactor = 1.0
-ForwardForce = 0.0
+function love.load()
+  WindAngle = 0.0
+  SailAngle = 0.1
+  CarAngle = 0.1
+  CarPos = {X = 500, Y = 500}
+  CarVel = {X = 0, Y = 0}
+  SheetFactor = 1.0
+  WindForce = 0.0
+  WindStrength = 50.0
+
+  love.window.setFullscreen(true)
+end
+
+function love.keypressed(key)
+  if key == 'escape' then
+    love.event.quit()
+  end
+end
 
 function love.update(dt)
-  -- Handle input
-  local powah = 80
-  local sheetSpeed = 2
-  if love.keyboard.isDown("up") then
-    SheetFactor = SheetFactor + sheetSpeed * dt
-  end
-  if love.keyboard.isDown("down") then
-    SheetFactor = SheetFactor - sheetSpeed * dt
-  end
-  if love.keyboard.isDown("a") then
-    CarAngle = CarAngle + powah * dt
-  end
-  if love.keyboard.isDown("d") then
-    CarAngle = CarAngle - powah * dt
-  end
-
   CarAngle = CarAngle % 360.0
   SheetFactor = Clamp(SheetFactor, 0.1, 1.0)
 
   -- Figure out the angle the sail wants to be
-  DesiredSailAngle = WindAngle - CarAngle + 180.0
-  DesiredSailAngle = Clamp(DesiredSailAngle, -80, 80)
+  local desiredSailAngle = Clamp(WindAngle - CarAngle + 180.0, -80, 80)
 
   -- Constrain the possible sail angle with the sheet
-  local possibleSailAngle = SheetFactor * DesiredSailAngle
+  local possibleSailAngle = SheetFactor * desiredSailAngle
 
   -- Update sail angle
   SailAngle = SailAngle + (possibleSailAngle - SailAngle) * 3.0 * dt
 
   -- Calculate force in wind direction
-  ForwardForce = math.sin(math.rad(math.abs(SailAngle + CarAngle - WindAngle)))
+  WindForce = WindStrength * math.abs(math.sin(math.rad(math.abs(SailAngle + CarAngle - WindAngle))))
+
+  -- Update car position
+  local carVec = {X = math.sin(math.rad(CarAngle)), Y = math.cos(math.rad(CarAngle))}
+  local carVecT = {X = carVec.Y, Y = carVec.X}
+  local sailVecT = {X = math.cos(math.rad(SailAngle+CarAngle)), Y = math.sin(math.rad(SailAngle+CarAngle))}
+  local windVec = {X = math.sin(math.rad(WindAngle)), Y = -math.cos(math.rad(WindAngle))}
+
+  local carVecDotCarVel = Dot(carVec, CarVel)
+  local carVecTDotCarVel = Dot(carVecT, CarVel)
+  local sailVecTDotWindVec = Dot(sailVecT, windVec)
+  local carForce = {
+    X = sailVecT.X * WindForce * sailVecTDotWindVec + 0.05 * WindStrength * windVec.X - 0.5 * carVecDotCarVel * carVec.X - 5.0 * carVecTDotCarVel * carVecT.X,
+    Y = sailVecT.Y * WindForce * sailVecTDotWindVec + 0.05 * WindStrength * windVec.Y - 0.5 * carVecDotCarVel * carVec.X - 5.0 * carVecTDotCarVel * carVecT.Y,
+  }
+
+  CarVel.X = CarVel.X + carForce.X * dt
+  CarVel.Y = CarVel.Y + carForce.Y * dt
+
+  CarPos.X = CarPos.X + CarVel.X * dt
+  CarPos.Y = CarPos.Y + CarVel.Y * dt
+
+  -- Handle input
+  local carVelLen = math.sqrt(Dot(CarVel, CarVel))
+  local powah = math.atan(carVelLen / 50) * 80
+  local sheetSpeed = 2
+
+  print(powah)
+
+  if love.keyboard.isDown('w') then
+    SheetFactor = SheetFactor + sheetSpeed * dt
+  end
+  if love.keyboard.isDown('s') then
+    SheetFactor = SheetFactor - sheetSpeed * dt
+  end
+  if love.keyboard.isDown('a') then
+    CarAngle = CarAngle + powah * dt
+  end
+  if love.keyboard.isDown('d') then
+    CarAngle = CarAngle - powah * dt
+  end
+
 end
 
 function love.draw()
   love.graphics.print('wind angle: ' .. WindAngle, 10, 10)
   love.graphics.print('sail angle: ' .. SailAngle, 10, 30)
-  love.graphics.print('boat angle: ' .. CarAngle, 10, 50)
-  love.graphics.print('force: ' .. ForwardForce, 10, 70)
+  love.graphics.print('car angle: ' .. CarAngle, 10, 50)
+  love.graphics.print('force: ' .. WindForce, 10, 70)
   love.graphics.print('sheet: ' .. SheetFactor, 10, 90)
+  love.graphics.print('x: ' .. CarPos.X .. ' y: ' .. CarPos.Y, 10, 110)
 
-  DrawCar(400, 300)
-  DrawWind(50, 500)
+  DrawCar(CarPos.X, CarPos.Y)
+  DrawWind(50, love.graphics.getHeight() - 40)
 end
 
 function DrawCar(x, y)
@@ -69,7 +106,7 @@ function DrawCar(x, y)
   DrawSail(
     0, 0,
     SailAngle,
-    20 * ForwardForce * -Sign(sumAngle),
+    20 * -WindForce/WindStrength * Sign(SailAngle),
     sailSize
   )
 
@@ -127,4 +164,8 @@ end
 
 function Sign(num)
   return (num >= 0 and 1) or -1
+end
+
+function Dot(vec1, vec2)
+  return vec1.X * vec2.X + vec1.Y * vec2.Y
 end
